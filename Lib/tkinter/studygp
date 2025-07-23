@@ -1,0 +1,158 @@
+import tkinter as tk
+from tkinter import messagebox
+import sqlite3
+from datetime import datetime
+
+# Initialize database
+conn = sqlite3.connect("study_app.db")
+cursor = conn.cursor()
+
+# Tables
+cursor.execute('''CREATE TABLE IF NOT EXISTS subjects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL
+)''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER,
+    title TEXT NOT NULL,
+    due_date TEXT,
+    FOREIGN KEY(subject_id) REFERENCES subjects(id)
+)''')
+
+cursor.execute('''CREATE TABLE IF NOT EXISTS schedule (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER,
+    day TEXT,
+    time TEXT,
+    FOREIGN KEY(subject_id) REFERENCES subjects(id)
+)''')
+
+conn.commit()
+
+# GUI App
+class StudyApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Study Planner App")
+
+        self.subject_entry = tk.Entry(root)
+        self.subject_entry.grid(row=0, column=1)
+        tk.Label(root, text="New Subject:").grid(row=0, column=0)
+        tk.Button(root, text="Add Subject", command=self.add_subject).grid(row=0, column=2)
+
+        tk.Label(root, text="Assignments").grid(row=1, column=0, columnspan=3)
+
+        self.assignment_subject = tk.Entry(root)
+        self.assignment_title = tk.Entry(root)
+        self.assignment_due = tk.Entry(root)
+
+        tk.Label(root, text="Subject").grid(row=2, column=0)
+        tk.Label(root, text="Title").grid(row=2, column=1)
+        tk.Label(root, text="Due Date (YYYY-MM-DD)").grid(row=2, column=2)
+
+        self.assignment_subject.grid(row=3, column=0)
+        self.assignment_title.grid(row=3, column=1)
+        self.assignment_due.grid(row=3, column=2)
+
+        tk.Button(root, text="Add Assignment", command=self.add_assignment).grid(row=4, column=1)
+
+        tk.Label(root, text="Schedule").grid(row=5, column=0, columnspan=3)
+        self.schedule_subject = tk.Entry(root)
+        self.schedule_day = tk.Entry(root)
+        self.schedule_time = tk.Entry(root)
+
+        tk.Label(root, text="Subject").grid(row=6, column=0)
+        tk.Label(root, text="Day (e.g., Monday)").grid(row=6, column=1)
+        tk.Label(root, text="Time (e.g., 15:00)").grid(row=6, column=2)
+
+        self.schedule_subject.grid(row=7, column=0)
+        self.schedule_day.grid(row=7, column=1)
+        self.schedule_time.grid(row=7, column=2)
+
+        tk.Button(root, text="Add Schedule", command=self.add_schedule).grid(row=8, column=1)
+
+        tk.Button(root, text="Show Assignments", command=self.show_assignments).grid(row=9, column=0)
+        tk.Button(root, text="Show Schedule", command=self.show_schedule).grid(row=9, column=2)
+
+        self.output_text = tk.Text(root, height=10, width=60)
+        self.output_text.grid(row=10, column=0, columnspan=3)
+
+    def add_subject(self):
+        subject = self.subject_entry.get().strip()
+        if subject:
+            cursor.execute("INSERT INTO subjects (name) VALUES (?)", (subject,))
+            conn.commit()
+            messagebox.showinfo("Added", f"Subject '{subject}' added.")
+            self.subject_entry.delete(0, tk.END)
+
+    def get_subject_id(self, name):
+        cursor.execute("SELECT id FROM subjects WHERE name = ?", (name,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+    def add_assignment(self):
+        subject = self.assignment_subject.get().strip()
+        title = self.assignment_title.get().strip()
+        due = self.assignment_due.get().strip()
+
+        subject_id = self.get_subject_id(subject)
+        if subject_id and title and due:
+            try:
+                datetime.strptime(due, '%Y-%m-%d')  # Validate date
+                cursor.execute("INSERT INTO assignments (subject_id, title, due_date) VALUES (?, ?, ?)",
+                               (subject_id, title, due))
+                conn.commit()
+                messagebox.showinfo("Added", "Assignment added.")
+                self.assignment_subject.delete(0, tk.END)
+                self.assignment_title.delete(0, tk.END)
+                self.assignment_due.delete(0, tk.END)
+            except ValueError:
+                messagebox.showerror("Error", "Invalid date format. Use YYYY-MM-DD.")
+        else:
+            messagebox.showerror("Error", "Missing or incorrect information.")
+
+    def add_schedule(self):
+        subject = self.schedule_subject.get().strip()
+        day = self.schedule_day.get().strip()
+        time = self.schedule_time.get().strip()
+
+        subject_id = self.get_subject_id(subject)
+        if subject_id and day and time:
+            cursor.execute("INSERT INTO schedule (subject_id, day, time) VALUES (?, ?, ?)",
+                           (subject_id, day, time))
+            conn.commit()
+            messagebox.showinfo("Added", "Study schedule added.")
+            self.schedule_subject.delete(0, tk.END)
+            self.schedule_day.delete(0, tk.END)
+            self.schedule_time.delete(0, tk.END)
+        else:
+            messagebox.showerror("Error", "Missing or incorrect information.")
+
+    def show_assignments(self):
+        cursor.execute('''
+            SELECT s.name, a.title, a.due_date FROM assignments a
+            JOIN subjects s ON a.subject_id = s.id
+            ORDER BY a.due_date ASC
+        ''')
+        records = cursor.fetchall()
+        self.output_text.delete("1.0", tk.END)
+        for r in records:
+            self.output_text.insert(tk.END, f"{r[0]}: {r[1]} (Due: {r[2]})\n")
+
+    def show_schedule(self):
+        cursor.execute('''
+            SELECT s.name, sch.day, sch.time FROM schedule sch
+            JOIN subjects s ON sch.subject_id = s.id
+            ORDER BY sch.day, sch.time
+        ''')
+        records = cursor.fetchall()
+        self.output_text.delete("1.0", tk.END)
+        for r in records:
+            self.output_text.insert(tk.END, f"{r[0]}: {r[1]} at {r[2]}\n")
+
+# Start the app
+root = tk.Tk()
+app = StudyApp(root)
+root.mainloop()
